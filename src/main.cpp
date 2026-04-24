@@ -46,29 +46,32 @@ String bytesToHex(const uint8_t* bytes, size_t length) {
 
   return out;
 }
-
+// checks if candidate version is newer than current version
 int compareSemver(const String& candidate, const String& current) {
   size_t i = 0;
   size_t j = 0;
-
+  // Compare each segment of the version strings as integers
   while (i < candidate.length() || j < current.length()) {
     long a = 0;
     long b = 0;
 
     while (i < candidate.length() && candidate[i] != '.') {
       if (isDigit(candidate[i])) {
-        a = (a * 10) + (candidate[i] - '0');
+        a = (a * 10) + (candidate[i] - '0'); // convert char to int
       }
       ++i;
     }
 
     while (j < current.length() && current[j] != '.') {
       if (isDigit(current[j])) {
-        b = (b * 10) + (current[j] - '0');
+        b = (b * 10) + (current[j] - '0'); // convert char to int
       }
       ++j;
     }
-
+    // candidate > current => 1
+    // candidate < current => -1
+    // candidate == current => 0 (continue to next segment)
+    // Missing segments are treated as 0, so "1.2" == "1.2.0" and "1.2.1" > "1.2"
     if (a > b) {
       return 1;
     }
