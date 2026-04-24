@@ -93,16 +93,16 @@ int compareSemver(const String& candidate, const String& current) {
 }
 
 void publishStatus(const char* state, const char* detail) {
-  StaticJsonDocument<256> doc;
+  StaticJsonDocument<256> doc; // allocation on stack, no dynamic memory usage
   doc["device"] = APP_DEVICE_ID;
   doc["fw"] = FIRMWARE_VERSION;
   doc["state"] = state;
   doc["detail"] = detail;
-  doc["uptime_ms"] = millis();
+  doc["uptime_ms"] = millis(); 
 
   char payload[256];
-  const size_t written = serializeJson(doc, payload, sizeof(payload));
-  mqttClient.publish(APP_MQTT_STATUS_TOPIC, payload, written);
+  const size_t written = serializeJson(doc, payload, sizeof(payload)); // returns the number of bytes written, not including the null terminator
+  mqttClient.publish(APP_MQTT_STATUS_TOPIC, payload, written); 
 }
 
 bool connectWiFi() {
