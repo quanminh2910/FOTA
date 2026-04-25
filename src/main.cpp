@@ -12,7 +12,7 @@
 #ifndef FIRMWARE_VERSION
 #define FIRMWARE_VERSION "0.1.0"
 #endif
-
+// firmware info structure
 struct FirmwareManifest {
   String version;
   String url;
@@ -25,7 +25,7 @@ PubSubClient mqttClient(mqttSecureClient);
 unsigned long lastTelemetryMs = 0;
 unsigned long lastUpdateCheckMs = 0;
 
-void configureTlsClient(WiFiClientSecure& client) {
+void configureTlsClient(WiFiClientSecure& client) { 
 #if APP_USE_INSECURE_TLS
   client.setInsecure();
 #else
@@ -173,28 +173,28 @@ bool fetchManifest(FirmwareManifest& manifest) {
   }
 
   const int httpCode = https.GET();
-  if (httpCode != HTTP_CODE_OK) {
+  if (httpCode != HTTP_CODE_OK) { // non-200 HTTP response code
     Serial.printf("Manifest request failed: HTTP %d\n", httpCode);
     https.end();
     return false;
   }
 
   StaticJsonDocument<1024> doc;
-  const DeserializationError err = deserializeJson(doc, https.getString());
+  const DeserializationError err = deserializeJson(doc, https.getString()); // deserialize the response body as JSON
   https.end();
 
-  if (err) {
+  if (err) { // failed to parse JSON
     Serial.printf("Manifest parse error: %s\n", err.c_str());
     return false;
   }
 
   manifest.version = doc["version"] | "";
-  manifest.url = doc["url"] | doc["firmware_url"] | "";
-  manifest.sha256 = doc["sha256"] | "";
+  manifest.url = doc["url"] | doc["firmware_url"] | ""; 
+  manifest.sha256 = doc["sha256"] | ""; 
   manifest.sha256.toLowerCase();
   manifest.sha256.trim();
 
-  if (manifest.version.isEmpty() || manifest.url.isEmpty()) {
+  if (manifest.version.isEmpty() || manifest.url.isEmpty()) { // if version or url is missing
     Serial.println("Manifest missing required fields");
     return false;
   }
@@ -207,47 +207,48 @@ bool downloadAndInstall(const FirmwareManifest& manifest) {
   configureTlsClient(httpsClient);
 
   HTTPClient https;
-  if (!https.begin(httpsClient, manifest.url)) {
+  if (!https.begin(httpsClient, manifest.url)) { // failed to initialize the connection
     Serial.println("Firmware request begin failed");
     return false;
   }
 
   int httpCode = https.GET();
-  if (httpCode != HTTP_CODE_OK) {
+  if (httpCode != HTTP_CODE_OK) { // non-200 HTTP response code
     Serial.printf("Firmware request failed: HTTP %d\n", httpCode);
     https.end();
     return false;
   }
 
-  int remaining = https.getSize();
-  if (!Update.begin(remaining > 0 ? static_cast<size_t>(remaining) : UPDATE_SIZE_UNKNOWN)) {
-    Serial.printf("Update.begin failed: %s\n", Update.errorString());
+  int remaining = https.getSize(); // content length from HTTP header, may be -1 if not provided by server
+  if (!Update.begin(remaining > 0 ? static_cast<size_t>(remaining) : UPDATE_SIZE_UNKNOWN)) { // start the update process with the expected size, or unknown if not provided
+    Serial.printf("Update.begin failed: %s\n", Update.errorString()); 
     https.end();
     return false;
   }
 
-  WiFiClient* stream = https.getStreamPtr();
-
-  mbedtls_sha256_context shaCtx;
+  WiFiClient* stream = https.getStreamPtr(); // get the underlying stream to read the firmware data
+  // Initialize SHA256 context for integrity verification during download. 
+  // This allows us to verify the firmware as it's being downloaded without needing to store it all
+  mbedtls_sha256_context shaCtx; 
   mbedtls_sha256_init(&shaCtx);
   mbedtls_sha256_starts_ret(&shaCtx, 0);
 
   uint8_t buffer[1024];
   size_t totalWritten = 0;
-  unsigned long lastDataAt = millis();
+  unsigned long lastDataAt = millis(); // track the last time we received data for timeout purposes
 
-  while (https.connected() && (remaining > 0 || remaining == -1)) {
-    const size_t available = stream->available();
+  while (https.connected() && (remaining > 0 || remaining == -1)) { // while the connection is open read data
+    const size_t available = stream->available(); // check how many bytes are available to read
 
     if (available > 0) {
-      const int toRead = available > sizeof(buffer) ? sizeof(buffer) : static_cast<int>(available);
-      const int readBytes = stream->readBytes(buffer, toRead);
+      const int toRead = available > sizeof(buffer) ? sizeof(buffer) : static_cast<int>(available); // if available data exceeds buffer size, read only up to buffer size
+      const int readBytes = stream->readBytes(buffer, toRead); // read data into buffer
 
-      if (readBytes <= 0) {
+      if (readBytes <= 0) { // if read failed, skip this iteration and check for timeout
         continue;
       }
 
-      if (Update.write(buffer, readBytes) != static_cast<size_t>(readBytes)) {
+      if (Update.write(buffer, readBytes) != static_cast<size_t>(readBytes)) { // write the chunk to flash, if it fails abort the update
         Serial.printf("Update.write failed: %s\n", Update.errorString());
         Update.abort();
         https.end();
@@ -255,27 +256,27 @@ bool downloadAndInstall(const FirmwareManifest& manifest) {
         return false;
       }
 
-      mbedtls_sha256_update_ret(&shaCtx, buffer, readBytes);
+      mbedtls_sha256_update_ret(&shaCtx, buffer, readBytes);// update the SHA256 hash with the new chunk
       totalWritten += static_cast<size_t>(readBytes);
 
-      if (remaining > 0) {
+      if (remaining > 0) { // decrease remaining byte count 
         remaining -= readBytes;
       }
 
-      lastDataAt = millis();
+      lastDataAt = millis(); // reset the timeout timer since we received data
     } else {
-      if (millis() - lastDataAt > 15000UL) {
+      if (millis() - lastDataAt > 15000UL) { // abort if we haven't received any data for 15 seconds
         Serial.println("Firmware download timed out");
         break;
       }
       delay(1);
     }
   }
-
+  // Finalize the SHA256 hash and free the context
   uint8_t shaDigest[32];
   mbedtls_sha256_finish_ret(&shaCtx, shaDigest);
   mbedtls_sha256_free(&shaCtx);
-  https.end();
+  https.end(); 
 
   if (remaining > 0) {
     Serial.println("Firmware download incomplete");
@@ -283,14 +284,14 @@ bool downloadAndInstall(const FirmwareManifest& manifest) {
     return false;
   }
 
-  const String actualSha = bytesToHex(shaDigest, sizeof(shaDigest));
-  if (!manifest.sha256.isEmpty() && actualSha != manifest.sha256) {
+  const String actualSha = bytesToHex(shaDigest, sizeof(shaDigest)); // verify the downloaded firmware against the expected SHA256 from the manifest
+  if (!manifest.sha256.isEmpty() && actualSha != manifest.sha256) { 
     Serial.println("Firmware SHA256 mismatch");
     Update.abort();
     return false;
   }
 
-  if (!Update.end(true)) {
+  if (!Update.end(true)) { // update the firmware and finalize
     Serial.printf("Update.end failed: %s\n", Update.errorString());
     return false;
   }
