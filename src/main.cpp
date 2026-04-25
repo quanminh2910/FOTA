@@ -115,14 +115,14 @@ bool connectWiFi() {
 
   Serial.print("Connecting to Wi-Fi");
   uint8_t attempts = 0;
-  while (WiFi.status() != WL_CONNECTED && attempts < 60) {
+  while (WiFi.status() != WL_CONNECTED && attempts < 60) { // wait up to 30 seconds
     delay(500);
     Serial.print('.');
     ++attempts;
   }
   Serial.println();
 
-  if (WiFi.status() != WL_CONNECTED) {
+  if (WiFi.status() != WL_CONNECTED) { // failed to connect
     Serial.println("Wi-Fi connection failed");
     return false;
   }
@@ -138,16 +138,16 @@ bool connectMqtt() {
   }
 
   uint8_t attempts = 0;
-  while (!mqttClient.connected() && attempts < 5) {
+  while (!mqttClient.connected() && attempts < 5) { // try up to 5 times with 1 second delay between attempts
     bool connected = false;
 
-    if (strlen(APP_MQTT_USER) > 0) {
-      connected = mqttClient.connect(APP_DEVICE_ID, APP_MQTT_USER, APP_MQTT_PASSWORD);
-    } else {
+    if (strlen(APP_MQTT_USER) > 0) { // connect with username and password
+      connected = mqttClient.connect(APP_DEVICE_ID, APP_MQTT_USER, APP_MQTT_PASSWORD); 
+    } else { // connect without authentication
       connected = mqttClient.connect(APP_DEVICE_ID);
     }
 
-    if (connected) {
+    if (connected) { // subscribe to command topic and publish online status
       mqttClient.subscribe(APP_MQTT_COMMAND_TOPIC);
       publishStatus("online", "mqtt_connected");
       return true;
@@ -159,13 +159,15 @@ bool connectMqtt() {
 
   return false;
 }
-
+// Fetches and parses the firmware manifest from the configured URL. 
+// Returns true on success and false on failure. 
+// The manifest is expected to be a JSON object containing at least "version" and "url" fields, and optionally a "sha256" field for integrity verification.
 bool fetchManifest(FirmwareManifest& manifest) {
   WiFiClientSecure httpsClient;
   configureTlsClient(httpsClient);
 
   HTTPClient https;
-  if (!https.begin(httpsClient, APP_MANIFEST_URL)) {
+  if (!https.begin(httpsClient, APP_MANIFEST_URL)) { // failed to initialize the connection
     Serial.println("Manifest request begin failed");
     return false;
   }
