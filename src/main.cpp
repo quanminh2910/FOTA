@@ -201,7 +201,7 @@ bool fetchManifest(FirmwareManifest& manifest) {
 
   return true;
 }
-
+// Downloads the firmware from the URL specified in the manifest and installs it using the Update library.
 bool downloadAndInstall(const FirmwareManifest& manifest) {
   WiFiClientSecure httpsClient;
   configureTlsClient(httpsClient);
@@ -304,7 +304,9 @@ bool downloadAndInstall(const FirmwareManifest& manifest) {
   Serial.printf("Firmware downloaded (%u bytes)\n", static_cast<unsigned>(totalWritten));
   return true;
 }
-
+// Checks for firmware updates by fetching the manifest and comparing versions. 
+// If an update is available or if forced, it proceeds to download and install the new firmware. 
+// Returns true if an update was performed and false otherwise.
 bool checkForUpdates(bool force) {
   FirmwareManifest manifest;
   if (!fetchManifest(manifest)) {
@@ -326,51 +328,56 @@ bool checkForUpdates(bool force) {
   }
 
   publishStatus("updated", "restarting");
-  delay(500);
-  ESP.restart();
+  delay(1000); // give some time for the MQTT message to be sent before restarting
+  ESP.restart(); // restart to apply the new firmware
   return true;
 }
-
+// Publishes telemetry data such as device ID, firmware version, uptime, Wi-Fi signal strength, and free heap memory to the configured MQTT topic.
 void publishTelemetry() {
   StaticJsonDocument<256> doc;
   doc["device"] = APP_DEVICE_ID;
   doc["fw"] = FIRMWARE_VERSION;
   doc["uptime_ms"] = millis();
   doc["rssi"] = WiFi.RSSI();
-  doc["heap"] = ESP.getFreeHeap();
+  doc["heap"] = ESP.getFreeHeap(); // free heap memory in bytes
 
   char payload[256];
+  // example payload: {"device":"esp32_001","fw":"0.1.0","uptime_ms":123456,"rssi":-70,"heap":20480}
   const size_t written = serializeJson(doc, payload, sizeof(payload));
   mqttClient.publish(APP_MQTT_TELEMETRY_TOPIC, payload, written);
 }
-
+// MQTT callback function that is called when a message is received on the subscribed command topic. 
+// It parses the incoming message as JSON and checks for a "cmd" field to determine the command to execute. 
+// Supported commands include "check_update" to trigger an update check and "reboot" to restart the device.
 void mqttCallback(char* topic, byte* payload, unsigned int length) {
   String message;
-  message.reserve(length);
+  message.reserve(length); // reserve memory about the length to avoid fragmentation 
 
-  for (unsigned int i = 0; i < length; ++i) {
+  for (unsigned int i = 0; i < length; ++i) { // convert payload bytes to a String
     message += static_cast<char>(payload[i]);
   }
 
-  Serial.printf("MQTT command on %s: %s\n", topic, message.c_str());
+  Serial.printf("MQTT command on %s: %s\n", topic, message.c_str()); 
 
   StaticJsonDocument<256> doc;
-  const DeserializationError err = deserializeJson(doc, message);
+  // parse the incoming message as JSON and check for errors
+  // examaple command payload: {"cmd":"check_update"} or {"cmd":"reboot"}
+  const DeserializationError err = deserializeJson(doc, message); 
   if (err) {
     publishStatus("command_error", "invalid_json");
     return;
   }
 
   const char* cmd = doc["cmd"] | "";
-  if (strcmp(cmd, "check_update") == 0) {
+  if (strcmp(cmd, "check_update") == 0) { // trigger an update check immediately
     checkForUpdates(true);
     return;
   }
 
-  if (strcmp(cmd, "reboot") == 0) {
+  if (strcmp(cmd, "reboot") == 0) { // publish a status message and restart the device
     publishStatus("rebooting", "mqtt_command");
-    delay(200);
-    ESP.restart();
+    delay(1000); // give some time for the MQTT message to be sent before restarting
+    ESP.restart(); 
     return;
   }
 
