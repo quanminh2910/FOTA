@@ -307,6 +307,7 @@ bool downloadAndInstall(const FirmwareManifest& manifest) {
 // Checks for firmware updates by fetching the manifest and comparing versions. 
 // If an update is available or if forced, it proceeds to download and install the new firmware. 
 // Returns true if an update was performed and false otherwise.
+// force = true => update regardless of version comparison, force = false => only update if manifest version is newer than current firmware version
 bool checkForUpdates(bool force) {
   FirmwareManifest manifest;
   if (!fetchManifest(manifest)) {
@@ -391,14 +392,14 @@ void setup() {
   Serial.println("ESP32 cloud + FOTA runtime starting");
   Serial.printf("Firmware version: %s\n", FIRMWARE_VERSION);
 
-  configureTlsClient(mqttSecureClient);
+  configureTlsClient(mqttSecureClient); 
   mqttClient.setServer(APP_MQTT_HOST, APP_MQTT_PORT);
-  mqttClient.setCallback(mqttCallback);
-  mqttClient.setBufferSize(512);
+  mqttClient.setCallback(mqttCallback); 
+  mqttClient.setBufferSize(512); // increase MQTT buffer size to handle larger messages if needed
 
   connectWiFi();
   connectMqtt();
-  checkForUpdates(false);
+  checkForUpdates(false); // check for updates but not forced, if true it will update regardless of version comparison
 }
 
 void loop() {
@@ -412,14 +413,14 @@ void loop() {
 
   mqttClient.loop();
 
-  const unsigned long now = millis();
+  const unsigned long now = millis(); // now = current time in milliseconds since the device started, used for timing telemetry and update checks
 
-  if (now - lastTelemetryMs >= APP_TELEMETRY_INTERVAL_MS) {
+  if (now - lastTelemetryMs >= APP_TELEMETRY_INTERVAL_MS) { // if now is greater than the last time we sent telemetry plus the configured interval, send telemetry
     lastTelemetryMs = now;
     publishTelemetry();
   }
 
-  if (now - lastUpdateCheckMs >= APP_UPDATE_CHECK_INTERVAL_MS) {
+  if (now - lastUpdateCheckMs >= APP_UPDATE_CHECK_INTERVAL_MS) { // similarly, check for updates at the configured interval
     lastUpdateCheckMs = now;
     checkForUpdates(false);
   }
